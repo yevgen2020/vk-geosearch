@@ -8,7 +8,7 @@ from datetime import datetime
 
 import requests
 
-token = '244dd087244dd087244dd08732242435ab2244d244dd08778e2f20fb88e072f99d2a583'
+token = ''
 v = 5.92
 
 E, R, G, Y, B = '\033[0m', '\033[31m', '\033[32m', '\033[33m', '\033[34m'
