@@ -72,7 +72,7 @@ if __name__ == '__main__':
         print(banner)
         input_proxy = input('Использовать прокси? (y/n): ')
         if input_proxy == 'y':
-            os.environ['PYTHONHTTPSVERIFY'] = '0'
+            #os.environ['PYTHONHTTPSVERIFY'] = '0'
             proxy_run = subprocess.Popen('./proxy.py')
 
         print(bp + '\nКоординаты в формате ДОЛГОТА, ШИРОТА Пример: ' + Y + '55.753215, 37.622504' + bp)
