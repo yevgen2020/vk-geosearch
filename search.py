@@ -1,123 +1,232 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import re
 import os
-import subprocess
 import time
 from datetime import datetime
+import argparse
 
 import requests
 
+
+# токен locationiq.com
+TOKEN = 'pk.5fe3dc9c3b231365b0dbe8fb1b11a723'
+
+# сервисный ключ доступа vk.com
 token = ''
-v = 5.92
+
+v = 5.103
 
 E, R, G, Y, B = '\033[0m', '\033[31m', '\033[32m', '\033[33m', '\033[34m'
 bp = '\n' + B + '-' * 75 + E
 banner = B + '''
-    ██╗   ██╗██╗  ██╗               ██████╗ ███████╗ ██████╗ ███████╗███████╗ █████╗ ██████╗  ██████╗██╗  ██╗
-    ██║   ██║██║ ██╔╝              ██╔════╝ ██╔════╝██╔═══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝██║  ██║
-    ██║   ██║█████╔╝     █████╗    ██║  ███╗█████╗  ██║   ██║███████╗█████╗  ███████║██████╔╝██║     ███████║
-    ╚██╗ ██╔╝██╔═██╗     ╚════╝    ██║   ██║██╔══╝  ██║   ██║╚════██║██╔══╝  ██╔══██║██╔══██╗██║     ██╔══██║
-     ╚████╔╝ ██║  ██╗              ╚██████╔╝███████╗╚██████╔╝███████║███████╗██║  ██║██║  ██║╚██████╗██║  ██║
-      ╚═══╝  ╚═╝  ╚═╝               ╚═════╝ ╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
-                                                                                                         
-''' + E
+
+    ██╗   ██╗██╗  ██╗      ██████╗ ███████╗ ██████╗ 
+    ██║   ██║██║ ██╔╝     ██╔════╝ ██╔════╝██╔═══██╗
+    ██║   ██║█████╔╝█████╗██║  ███╗█████╗  ██║   ██║
+    ╚██╗ ██╔╝██╔═██╗╚════╝██║   ██║██╔══╝  ██║   ██║
+     ╚████╔╝ ██║  ██╗     ╚██████╔╝███████╗╚██████╔╝
+      ╚═══╝  ╚═╝  ╚═╝      ╚═════╝ ╚══════╝ ╚═════╝ 
+                                                    
+    v.2 https://github.com/yevgen2020''' + E
 
 
-def parse_vk(lat, long, start_time, end_time, radius, pr):
+def parse_vk(lat, long, start_time, end_time, radius, pr, size, fname=None):
     result = []
-    if pr == 'y':
-        proxies = {'http': 'http://127.0.0.1:8888',
-                   'https': 'http://127.0.0.1:8888'}
+    if pr:
+        proxies = {'http': 'socks5://127.0.0.1:8080',
+                   'https': 'socks5://127.0.0.1:8080'}
     else:
         proxies = None
 
     params = {
-            'lat': lat,
-            'long': long,
-            'start_time': start_time,
-            'end_time': end_time,
-            'radius': radius,
-            'sort': 0,
-            'count': 1000,
-            'access_token': token,
-            'v': v
+        'lat': lat,
+        'long': long,
+        'start_time': start_time,
+        'end_time': end_time,
+        'radius': radius,
+        'sort': 0,
+        'count': 1000,
+        'access_token': token,
+        'v': v
     }
 
-    r = requests.get('https://api.vk.com/method/photos.search', params=params, proxies=proxies).json()
+    r = requests.get('https://api.vk.com/method/photos.search', params=params,
+                     proxies=proxies).json()
 
     count = r['response']['count']
     print(B + 'Всего: ' + E + str(count))
     for i in r['response']['items']:
         photo = ''
-        for s in i['sizes']:
-            if s['type'] == 'w':
-                photo = i['sizes'][-4]['url']
 
-        if not photo:
-            photo = i['sizes'][-1]['url']
+        if size == 'y':
+            for s in i['sizes']:
+                if s['type'] == 'w':
+                    photo = i['sizes'][-4]['url']
+            if not photo:
+                photo = i['sizes'][-1]['url']
+
+        else:
+            for s in i['sizes']:
+                if s['type'] == 'm':
+                    photo = i['sizes'][0]['url']
+            if not photo:
+                photo = i['sizes'][-1]['url']
 
         date = i['date']
         if i['owner_id'] > 0:
-            result.append([photo, date, i['owner_id']])
+            if fname:
+                par = {
+                    'user_ids': i['owner_id'],
+                    'name_case': 'nom',
+                    'access_token': token,
+                    'v': v
+                }
+                response = requests.get('https://api.vk.com/method/users.get', params=par,
+                                        proxies=proxies).json()
+                name = response['response'][0]['first_name'] + ' ' + response['response'][0][
+                    'last_name']
+                time.sleep(0.5)
+                result.append([photo, date, i['owner_id'], name])
+            else:
+                result.append([photo, date, i['owner_id']])
         else:
             continue
 
     return str(len(result)), result
 
 
+def geoforward(q):
+    data = {
+        'key': TOKEN,
+        'q': q,
+        'format': 'json'
+    }
+    response = requests.get('https://eu1.locationiq.com/v1/search.php', params=data)
+    if response.status_code != 200:
+        return response.status_code
+    response = response.json()
+    return f"{response[0]['lat']}, {response[0]['lon']}"
+
+
 if __name__ == '__main__':
     try:
-        proxy_run = None
-        print(banner)
-        input_proxy = input('Использовать прокси? (y/n): ')
-        if input_proxy == 'y':
-            #os.environ['PYTHONHTTPSVERIFY'] = '0'
-            proxy_run = subprocess.Popen('./proxy.py')
+        while True:
+            print(banner)
+            parser = argparse.ArgumentParser()
+            parser.add_argument('-p', '--proxy', action='store_const', const=True,
+                                help='SOCKS прокси слушает на 127.0.0.1:8080')
+            if parser.parse_args().proxy:
+                proxy = True
+            else:
+                proxy = False
 
-        print(bp + '\nКоординаты в формате ДОЛГОТА, ШИРОТА Пример: ' + Y + '55.753215, 37.622504' + bp)
-        coordinates = input('Координаты: ')
-        place = 'Координаты: ' + coordinates
-        coordinates = coordinates.split(', ')
-        print(bp + '\nФормат ДД/ММ/ГГГГ ЧЧ:ММ Пример: ' + Y + '01/03/2019 08:05' + bp)
-        input_end_date = input('Конечные дата-время или [Enter] - текущие: ')
-        if not input_end_date:
-            end_date = int(time.time())
-        else:
-            end_date = int(time.mktime(datetime.strptime(input_end_date, '%d/%m/%Y %H:%M').timetuple()))
-        input_start_date = input('Начальные дата-время: ')
-        start_date = int(time.mktime(datetime.strptime(input_start_date, '%d/%m/%Y %H:%M').timetuple()))
-        radius = input('Радиус поиска в метрах [10, 100, 800, 6000, 50000]: ')
-        print(bp + B + '\nПарсинг...')
-        items, res = parse_vk(*coordinates, start_date, end_date, radius, input_proxy)
-        print(B + 'Отфильтрованых результатов: ' + E + items)
-        place = place + '<br>Результатов: ' + items
-        filename = str(time.time()).split('.')[0] + '.html'
-        print(B + 'Файл: ' + E + os.getcwd() + '/' + filename + bp)
-        file = open(filename, 'w')
+            print(f'{bp}\nКоординаты в формате ДОЛГОТА, ШИРОТА Пример: {Y}55.753215, 37.622504{E}\n'
+                  f'Адрес. Пример: {Y}россия москва новый арбат 19{bp}')
+            while True:
+                coordinates = input(f'{G}Координаты или адрес: {E}')
+                if re.match(r'\d{1,2}\.\d{1,16},\s\d{1,2}\.\d{1,16}', coordinates):
+                    break
+                elif coordinates:
+                    coordinates = geoforward(coordinates)
+                    if re.match(r'\d{1,2}\.\d{1,16},\s\d{1,2}\.\d{1,16}', coordinates):
+                        break
+                else:
+                    print(f'{R}Неверный фориат координат или locationiq вернул {coordinates}')
+            place = 'Координаты: ' + coordinates
+            coordinates = coordinates.split(', ')
+            print(bp + '\nФормат ДД/ММ/ГГГГ ЧЧ:ММ Пример: ' + Y + '1/3/2020 08:05\n(время можно '
+                                                                  'не '
+                                                                  'указывать по умолчанию 00:00)' + bp)
+            while True:
+                input_end_date = input(f'{G}Конечные дата-время или [{E}Enter{G}] - текущие: {E}')
+                if not input_end_date:
+                    end_date = int(time.time())
+                    break
+                elif re.match(r'\d{2}/\d{2}/\d{4}\s\d\d:\d\d', input_end_date):
+                    end_date = int(
+                        time.mktime(datetime.strptime(input_end_date, '%d/%m/%Y %H:%M').timetuple()))
+                    break
+                elif re.match(r'\d{2}/\d{1,2}/\d{4}', input_end_date):
+                    end_date = int(
+                        time.mktime(datetime.strptime(input_end_date, '%d/%m/%Y').timetuple()))
+                    break
+                else:
+                    print(f'{R}Неверный фориат даты-времени!')
 
-        header = '<html>\n\t<head>\n\t\t<style type="text/css">' \
-                 '\n\t\t\t.container {display: grid; grid-gap: 20px; grid-template-columns: 400px 400px 400px;' \
-                 ' text-align: center;}' \
-                 '\n\t\t\ta {text-decoration: none; color: black;}' \
-                 '\n\t\t\timg {max-width: 400px; max-height: 300px; object-fit: cover;}' \
-                 '\n\t\t</style>\n\t</head>\n\t<body>' \
-                 '\n\t\t<h2 style="text-align: center">' + place + '</h2>\n\t\t<div class="container">'
+            while True:
+                input_start_date = input(f'{G}Начальные дата-время: {E}')
+                if re.match(r'\d{1,2}/\d{1,2}/\d{4}\s\d\d:\d\d', input_start_date):
+                    start_date = int(
+                        time.mktime(datetime.strptime(input_start_date, '%d/%m/%Y %H:%M').timetuple()))
+                    break
+                elif re.match(r'\d{1,2}/\d{1,2}/\d{4}', input_start_date):
+                    start_date = int(
+                        time.mktime(datetime.strptime(input_start_date, '%d/%m/%Y').timetuple()))
+                    break
+                else:
+                    print(f'{R}Неверный фориат даты-времени!')
 
-        file.write(header)
-        for i in res:
-            txt = datetime.utcfromtimestamp(int(i[1])).strftime('%d-%m-%Y %H:%M')
-            link = 'https://vk.com/id' + str(i[2])
-            to_write = f'\n\t\t\t<a target="_blank" rel="noopener" href="{link}"><img src="{i[0]}" alt=""><br>{txt}</a>'
-            file.write(to_write)
+            while True:
+                radius = input(f'{G}Радиус поиска в метрах [{E}10, 100, 800, 6000, 50000{G}]: {E}')
+                if int(radius) in [10, 100, 800, 6000, 50000]:
+                    break
+                else:
+                    print(f'{R}Неверный фориат радиуса!')
 
-        file.write('\n\t\t</div>\n\t</body>\n</html>')
-        file.close()
-        if proxy_run:
-            proxy_run.kill()
+            size = input(f'{G}Разрешение фото [{E}y{G}]-большое или [{E}Enter{G}]-маленькое: {E}')
+            family_name = input(f'{G}Фамилия имя нужны в выдаче?[{E}y{G}]-да, [{E}any key{G}]-нет: {E}')
+            if family_name == 'y':
+                fn = True
+            else:
+                fn = False
+
+            print(B + '\nПарсинг...')
+            items, res = parse_vk(*coordinates, start_date, end_date, radius, proxy, size,
+                                  fname=fn)
+            print(B + 'Отфильтрованых результатов: ' + E + items)
+            if int(items) == 0:
+                exit(0)
+            place = place + '<br>Результатов: ' + items
+            filename = str(time.time()).split('.')[0] + '.html'
+            print(B + 'Файл: ' + E + os.getcwd() + '/' + filename + bp)
+            file = open(filename, 'w')
+
+            if size == 'y':
+                colums = ' 400px 400px 400px;'
+            else:
+                colums = ' 200px 200px 200px 200px 200px 200px;'
+
+            header = '<html><head><style type="text/css">' \
+                     '.container {display: grid; grid-gap: 20px; grid-template-columns:' + colums +\
+                     ' text-align: center;}' \
+                     'a {text-decoration: none; color: black;}' \
+                     'img {max-width: 400px; max-height: 300px; object-fit: cover;}' \
+                     '</style></head><body>' \
+                     '<h2 style="text-align: center">' + place + '</h2><div class="container">'
+
+            file.write(header)
+
+            for i in res:
+                name_family = ''
+                if len(i) == 4:
+                    name_family = f'</br>{i[3]}'
+                txt = datetime.utcfromtimestamp(int(i[1])).strftime('%d-%m-%Y %H:%M')
+                link = 'https://vk.com/id' + str(i[2])
+                to_write = f'\n\t\t\t<a target="_blank" rel="noopener" href="{link}"><img src="' \
+                           f'{i[0]}" alt=""><br>{txt}{name_family}</a>'
+                file.write(to_write)
+
+            file.write('\n\t\t</div>\n\t</body>\n</html>')
+            file.close()
+            n = input(f'{G}Для продолжения нажмите [{E}любую клавишу{G}] или [{E}Ctrl+C{G}] для '
+                      f'выхода{E}')
+
+    except KeyboardInterrupt:
+        print('\nОперация прервана. Выход...')
+        exit(0)
 
     except Exception as err:
         print(err)
-        if proxy_run:
-            proxy_run.kill()
         exit(1)
